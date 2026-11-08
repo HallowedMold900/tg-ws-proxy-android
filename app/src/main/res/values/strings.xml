@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">TG WS Proxy</string>
+    <string name="widget_description">Статус прокси и включение одним нажатием</string>
+</resources>
