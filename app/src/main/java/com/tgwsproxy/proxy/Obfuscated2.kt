@@ -15,7 +15,7 @@ class AesCtr(key: ByteArray, iv: ByteArray) {
 
     fun process(data: ByteArray, off: Int = 0, len: Int = data.size - off): ByteArray {
         val out = cipher.update(data, off, len)
-        check(out != null && out.size == len) { "CTR: неожиданный размер вывода" }
+        check(out != null && out.size == len) { "CTR: unexpected output size" }
         return out
     }
 }

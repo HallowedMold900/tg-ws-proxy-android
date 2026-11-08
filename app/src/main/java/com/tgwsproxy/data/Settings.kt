@@ -1,5 +1,7 @@
 package com.tgwsproxy.data
 
+import com.tgwsproxy.R
+import com.tgwsproxy.S
 import android.content.Context
 import java.net.InetAddress
 import java.security.SecureRandom
@@ -104,17 +106,17 @@ data class Draft(
         val errors = LinkedHashMap<Field, String>()
 
         val h = host.trim()
-        if (!IPV4.matches(h)) errors[Field.HOST] = "Введите IPv4-адрес, например 127.0.0.1"
+        if (!IPV4.matches(h)) errors[Field.HOST] = S.get(R.string.err_host)
 
         val p = port.trim().toIntOrNull()
-        if (p == null || p !in 1024..65535) errors[Field.PORT] = "Порт от 1024 до 65535"
+        if (p == null || p !in 1024..65535) errors[Field.PORT] = S.get(R.string.err_port)
 
         var s = secret.trim().lowercase()
         if (s.length == 34 && s.startsWith("dd")) s = s.substring(2)
         if (s.length >= 34 && s.startsWith("ee")) {
-            errors[Field.SECRET] = "Введите только 32 hex-символа, домен Fake TLS задаётся отдельным полем"
+            errors[Field.SECRET] = S.get(R.string.err_secret_ee)
         } else if (!HEX32.matches(s)) {
-            errors[Field.SECRET] = "Нужно 32 hex-символа (0–9, a–f)"
+            errors[Field.SECRET] = S.get(R.string.err_secret)
         }
 
         val dcMap = LinkedHashMap<Int, String>()
@@ -125,25 +127,25 @@ data class Draft(
             val dc = m?.groupValues?.get(1)?.toIntOrNull()
             val ip = m?.groupValues?.get(2)
             if (m == null || dc == null || ip == null || dc !in VALID_DCS || !IPV4.matches(ip)) {
-                errors[Field.DC_IP] = "Неверная строка «$line». Формат: DC:IP, например 4:149.154.167.220"
+                errors[Field.DC_IP] = S.get(R.string.err_dc_line, line)
                 break
             }
             dcMap[dc] = ip
         }
 
         val cfDomains = parseDomains(cfProxyDomain)
-        if (cfDomains == null) errors[Field.CF_DOMAIN] = "Неверный домен. Пример: example.com"
+        if (cfDomains == null) errors[Field.CF_DOMAIN] = S.get(R.string.err_domain)
 
         val workerDomains = parseDomains(cfWorkerDomain)
         if (workerDomains == null) {
-            errors[Field.WORKER_DOMAIN] = "Неверный домен. Пример: name.user.workers.dev"
+            errors[Field.WORKER_DOMAIN] = S.get(R.string.err_worker_domain)
         } else if (cfWorker && workerDomains.isEmpty()) {
-            errors[Field.WORKER_DOMAIN] = "Укажите домен Worker’а"
+            errors[Field.WORKER_DOMAIN] = S.get(R.string.err_worker_empty)
         }
 
         val tlsDomains = parseDomains(fakeTlsDomain)
         if (tlsDomains == null || tlsDomains.size > 1) {
-            errors[Field.FAKE_TLS] = "Один домен, например www.google.com"
+            errors[Field.FAKE_TLS] = S.get(R.string.err_fake_tls)
         }
 
         val rules = ArrayList<IpRule>()
@@ -152,7 +154,7 @@ data class Draft(
             if (t.isEmpty()) continue
             val r = IpRule.parse(t)
             if (r == null) {
-                errors[Field.ALLOWED] = "Неверный адрес «$t». Пример: 192.168.1.15 или 192.168.1.0/24"
+                errors[Field.ALLOWED] = S.get(R.string.err_allowed, t)
                 break
             }
             rules += r

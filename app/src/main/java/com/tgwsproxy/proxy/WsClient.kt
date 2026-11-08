@@ -46,12 +46,12 @@ class WsConn(private val sock: Socket) : Closeable {
         val head = StringBuilder()
         while (!head.endsWith("\r\n\r\n")) {
             val b = input.read()
-            if (b < 0) throw EOFException("соединение закрыто при рукопожатии")
+            if (b < 0) throw EOFException("connection closed during handshake")
             head.append(b.toChar())
-            if (head.length > 16 * 1024) throw IOException("слишком длинный ответ")
+            if (head.length > 16 * 1024) throw IOException("response too long")
         }
         val status = head.lineSequence().first().split(" ")
-        return status.getOrNull(1)?.toIntOrNull() ?: throw IOException("плохой ответ сервера")
+        return status.getOrNull(1)?.toIntOrNull() ?: throw IOException("bad server response")
     }
 
     fun sendBinary(data: ByteArray) = sendFrame(0x2, data)
@@ -96,7 +96,7 @@ class WsConn(private val sock: Socket) : Closeable {
                 len = 0
                 repeat(8) { len = (len shl 8) or readByte().toLong() }
             }
-            if (len > MAX_FRAME) throw IOException("слишком большой кадр")
+            if (len > MAX_FRAME) throw IOException("frame too large")
             val mask = if ((b1 and 0x80) != 0) ByteArray(4).also { readFully(it) } else null
             val payload = ByteArray(len.toInt())
             readFully(payload)
@@ -114,11 +114,11 @@ class WsConn(private val sock: Socket) : Closeable {
                     acc = ByteArrayOutputStream().also { it.write(payload) }
                 }
                 0x0 -> {
-                    val a = acc ?: throw IOException("неожиданное продолжение кадра")
+                    val a = acc ?: throw IOException("unexpected continuation frame")
                     a.write(payload)
                     if (fin) return a.toByteArray()
                 }
-                else -> throw IOException("неизвестный opcode $opcode")
+                else -> throw IOException("unknown opcode $opcode")
             }
         }
     }
@@ -165,7 +165,7 @@ object WsConnector {
                 raw.connect(InetSocketAddress(tcpHost, 443), timeoutMs)
             } catch (e: SocketTimeoutException) {
                 raw.close()
-                return WsResult.Fail("TCP: таймаут", connectTimeout = true)
+                return WsResult.Fail("TCP: timeout", connectTimeout = true)
             } catch (e: IOException) {
                 raw.close()
                 return WsResult.Fail("TCP: ${e.message ?: e.javaClass.simpleName}")
@@ -191,7 +191,7 @@ object WsConnector {
             return if (code in REDIRECTS) WsResult.Redirect(code) else WsResult.Fail("HTTP $code")
         } catch (e: SocketTimeoutException) {
             try { raw.close() } catch (_: IOException) {}
-            return WsResult.Fail("таймаут TLS/WebSocket")
+            return WsResult.Fail("TLS/WebSocket timeout")
         } catch (e: Exception) {
             try { raw.close() } catch (_: IOException) {}
             return WsResult.Fail(e.message ?: e.javaClass.simpleName)

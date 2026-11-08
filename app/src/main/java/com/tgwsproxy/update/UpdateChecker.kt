@@ -1,5 +1,6 @@
 package com.tgwsproxy.update
 
+import com.tgwsproxy.S
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -105,7 +106,7 @@ object UpdateChecker {
 
         when (result) {
             is Fetch.Failed -> {
-                state.value = if (previous is UpdateState.Available) previous else UpdateState.Error("Не удалось проверить: ${result.message}")
+                state.value = if (previous is UpdateState.Available) previous else UpdateState.Error(S.get(R.string.err_check_failed, result.message))
             }
             Fetch.NotFound -> {
                 markChecked()
@@ -151,7 +152,7 @@ object UpdateChecker {
                 200 -> {
                     val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
                     val tag = json.optString("tag_name")
-                    if (tag.isEmpty()) return Fetch.Failed("пустой ответ GitHub")
+                    if (tag.isEmpty()) return Fetch.Failed("empty GitHub response")
                     var apk: String? = null
                     val assets = json.optJSONArray("assets")
                     if (assets != null) {
@@ -192,7 +193,7 @@ object UpdateChecker {
             conn.setRequestProperty("User-Agent", "tg-ws-proxy-android")
             val code = conn.responseCode
             if (code in 300..399) {
-                var loc = conn.getHeaderField("Location") ?: return Fetch.Failed("нет адреса перенаправления")
+                var loc = conn.getHeaderField("Location") ?: return Fetch.Failed("no redirect location")
                 if (loc.startsWith("/")) loc = "https://github.com$loc"
                 if ("/releases/tag/" in loc) {
                     val tag = loc.substringAfter("/releases/tag/").substringBefore('?').substringBefore('#')
@@ -237,15 +238,15 @@ object UpdateChecker {
         }
         return try {
             val nm = context.getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, "Обновления", NotificationManager.IMPORTANCE_DEFAULT))
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_ID, S.get(R.string.updates), NotificationManager.IMPORTANCE_DEFAULT))
             val open = PendingIntent.getActivity(
                 context, 5, Intent(Intent.ACTION_VIEW, Uri.parse(info.url)),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
             val n = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_stat_proxy)
-                .setContentTitle("Доступно обновление TG WS Proxy")
-                .setContentText("Версия ${info.version} — нажмите, чтобы открыть страницу релиза")
+                .setContentTitle(S.get(R.string.notif_update_title))
+                .setContentText(S.get(R.string.notif_update_text, info.version))
                 .setContentIntent(open)
                 .setAutoCancel(true)
                 .build()

@@ -105,7 +105,7 @@ class CfH2Pool {
         val c = CfH2.client.newBuilder().callTimeout(8, TimeUnit.SECONDS).build()
         val req = Request.Builder().url("https://$host/api").head().build()
         c.newCall(req).execute().use { resp ->
-            if (resp.protocol != Protocol.HTTP_2) throw IOException("согласован ${resp.protocol}, нужен HTTP/2")
+            if (resp.protocol != Protocol.HTTP_2) throw IOException("negotiated ${resp.protocol}, HTTP/2 required")
             val code = resp.code
             if (code !in 200..299 && code != 405 && code != 501) throw IOException("HTTP $code")
         }
@@ -156,7 +156,7 @@ class H2Upstream(
     // ───────────── вход: поток клиента (уже расшифрованный) ─────────────
 
     override fun send(data: ByteArray) {
-        if (closed.get()) throw IOException("H2: канал закрыт")
+        if (closed.get()) throw IOException("H2: channel closed")
         if (size + data.size > buf.size) buf = buf.copyOf(maxOf(buf.size * 2, size + data.size))
         System.arraycopy(data, 0, buf, size, data.size)
         size += data.size
@@ -184,7 +184,7 @@ class H2Upstream(
                 length = CfH2.le32(buf, pos) and 0x7fffffff
             }
             val maxLen = CfH2.MAX_PACKET + if (proto == Proto.PADDED) CfH2.MAX_PLAIN_PADDING else 0
-            if (length < 24 || length > maxLen) throw IOException("H2: длина пакета вне диапазона: $length")
+            if (length < 24 || length > maxLen) throw IOException("H2: packet length out of range: $length")
             if (avail < hdr + length) break
 
             var body = buf.copyOfRange(pos + hdr, pos + hdr + length)
@@ -194,11 +194,11 @@ class H2Upstream(
                 val padding = length - packetLength
                 val maxPadding = if (plain) CfH2.MAX_PLAIN_PADDING else 15
                 if (packetLength < 24 || packetLength > length || padding > maxPadding) {
-                    throw IOException("H2: неверный пакет с выравниванием")
+                    throw IOException("H2: invalid padded packet")
                 }
                 body = body.copyOf(packetLength)
             }
-            if (body.size % 4 != 0 || body.size > CfH2.MAX_PACKET) throw IOException("H2: неверный размер пакета")
+            if (body.size % 4 != 0 || body.size > CfH2.MAX_PACKET) throw IOException("H2: invalid packet size")
             pos += hdr + length
             submit(body, replay = false)
         }
@@ -219,7 +219,7 @@ class H2Upstream(
 
     private fun encodeReply(body: ByteArray): ByteArray {
         if (body.isEmpty() || body.size % 4 != 0 || body.size > CfH2.MAX_PACKET) {
-            throw IOException("H2: неверная длина ответа ${body.size}")
+            throw IOException("H2: invalid reply length ${body.size}")
         }
         return when (proto) {
             Proto.ABRIDGED -> {
@@ -239,11 +239,11 @@ class H2Upstream(
     // ───────────── запросы ─────────────
 
     private fun submit(body: ByteArray, replay: Boolean): Boolean {
-        if (closed.get()) throw IOException("H2: канал закрыт")
+        if (closed.get()) throw IOException("H2: channel closed")
         if (replay) {
             if (!inFlight.tryAcquire()) return false
         } else if (!inFlight.tryAcquire(CfH2.REQUEST_TIMEOUT_S, TimeUnit.SECONDS)) {
-            throw IOException("H2: очередь запросов переполнена")
+            throw IOException("H2: request queue overflow")
         }
         val req = prepare(body, replay)
         if (req == null) {
@@ -287,11 +287,11 @@ class H2Upstream(
                         p.attempts = 0
                     }
                 }
-                if (!queue.offer(encodeReply(reply))) throw IOException("H2: очередь ответов переполнена")
+                if (!queue.offer(encodeReply(reply))) throw IOException("H2: reply queue overflow")
             }
         } catch (e: H2TransportError) {
             if (!closed.getAndSet(true)) {
-                ProxyState.log("H2 $host: ошибка транспорта ${e.code}, передаю клиенту")
+                ProxyState.log("H2 $host: transport error ${e.code}, passing to the client")
                 queue.clear()
                 queue.offer(encodeReply(CfH2.putLe32(e.code)))
                 queue.offer(end)
@@ -328,20 +328,20 @@ class H2Upstream(
         call.execute().use { resp ->
             req.receiving = true
             lastProgress = SystemClock.elapsedRealtime()
-            if (resp.protocol != Protocol.HTTP_2) throw IOException("CF /api: согласован ${resp.protocol}")
+            if (resp.protocol != Protocol.HTTP_2) throw IOException("CF /api: negotiated ${resp.protocol}")
             when (resp.code) {
                 403, 404, 429, 444 -> throw H2TransportError(-resp.code)
                 200 -> Unit
                 else -> throw IOException("CF /api HTTP ${resp.code}")
             }
             if (resp.header("content-type").orEmpty().contains("text/html", ignoreCase = true)) {
-                throw IOException("CF /api вернул HTML вместо MTProto")
+                throw IOException("CF /api returned HTML instead of MTProto")
             }
             val body = resp.body ?: return ByteArray(0)
-            if (body.contentLength() > CfH2.MAX_PACKET) throw IOException("ответ слишком большой")
+            if (body.contentLength() > CfH2.MAX_PACKET) throw IOException("response too large")
             val bytes = body.bytes()
-            if (bytes.size > CfH2.MAX_PACKET) throw IOException("ответ слишком большой")
-            if (bytes.isNotEmpty() && bytes.size % 4 != 0) throw IOException("ответ не выровнен")
+            if (bytes.size > CfH2.MAX_PACKET) throw IOException("response too large")
+            if (bytes.isNotEmpty() && bytes.size % 4 != 0) throw IOException("response is not aligned")
             if (bytes.size == 4) {
                 val code = CfH2.le32(bytes)
                 if (code < 0) throw H2TransportError(code)

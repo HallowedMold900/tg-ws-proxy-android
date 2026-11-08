@@ -1,5 +1,7 @@
 package com.tgwsproxy.ui
 
+import com.tgwsproxy.R
+import com.tgwsproxy.S
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -82,7 +84,7 @@ fun AboutScreen(
                 Column {
                     Text("TG WS Proxy", style = MaterialTheme.typography.headlineSmall)
                     Text(
-                        if (version.isNotEmpty()) "Версия $version" else "Версия неизвестна",
+                        if (version.isNotEmpty()) S.get(R.string.version_fmt, version) else S.get(R.string.version_unknown),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -90,16 +92,16 @@ fun AboutScreen(
         }
 
         // Обновления
-        SectionCard("Обновления", Icons.Rounded.SystemUpdate) {
+        SectionCard(S.get(R.string.updates), Icons.Rounded.SystemUpdate) {
             when (state) {
-                UpdateState.Idle -> StatusLine("Проверка ещё не выполнялась")
+                UpdateState.Idle -> StatusLine(S.get(R.string.update_idle))
                 UpdateState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                     Spacer(Modifier.width(12.dp))
-                    Text("Проверяю…", style = MaterialTheme.typography.bodyMedium)
+                    Text(S.get(R.string.checking), style = MaterialTheme.typography.bodyMedium)
                 }
-                UpdateState.UpToDate -> StatusLine("У вас последняя версия")
-                UpdateState.NoReleases -> StatusLine("На GitHub пока нет опубликованных релизов")
+                UpdateState.UpToDate -> StatusLine(S.get(R.string.up_to_date))
+                UpdateState.NoReleases -> StatusLine(S.get(R.string.no_releases))
                 is UpdateState.Error -> Text(state.message, style = MaterialTheme.typography.bodyMedium, color = cs.error)
                 is UpdateState.Available -> {
                     Card(
@@ -107,7 +109,7 @@ fun AboutScreen(
                         shape = RoundedCornerShape(20.dp),
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("Доступна версия ${state.info.version}", style = MaterialTheme.typography.titleMedium)
+                            Text(S.get(R.string.update_available, state.info.version), style = MaterialTheme.typography.titleMedium)
                             if (state.info.notes.isNotEmpty()) {
                                 Text(
                                     state.info.notes.take(600) + if (state.info.notes.length > 600) "…" else "",
@@ -116,12 +118,12 @@ fun AboutScreen(
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { onOpen(state.info.url) }, modifier = Modifier.weight(1f)) {
-                                    Text("Страница релиза")
+                                    Text(S.get(R.string.release_page))
                                 }
                                 val apk = state.info.apkUrl
                                 if (apk != null) {
                                     OutlinedButton(onClick = { onOpen(apk) }, modifier = Modifier.weight(1f)) {
-                                        Text("Скачать APK")
+                                        Text(S.get(R.string.download_apk))
                                     }
                                 }
                             }
@@ -131,7 +133,7 @@ fun AboutScreen(
             }
             if (lastCheckMs > 0) {
                 Text(
-                    "Последняя проверка: " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(lastCheckMs)),
+                    S.get(R.string.last_check, SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(lastCheckMs))),
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.onSurfaceVariant,
                 )
@@ -143,30 +145,30 @@ fun AboutScreen(
             ) {
                 Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Проверить обновления")
+                Text(S.get(R.string.check_updates))
             }
             SwitchRow(
-                title = "Уведомлять об обновлениях",
-                subtitle = "Проверять GitHub раз в несколько часов и присылать уведомление о новой версии",
+                title = S.get(R.string.notify_updates),
+                subtitle = S.get(R.string.notify_updates_sub),
                 checked = notifyEnabled,
                 onChecked = onToggleNotify,
             )
         }
 
         // Автор и ссылки
-        SectionCard("О проекте", Icons.Rounded.Info) {
-            InfoRow("Автор", UpdateChecker.AUTHOR)
-            InfoRow("Версия", if (version.isNotEmpty()) version else "—")
+        SectionCard(S.get(R.string.about_project), Icons.Rounded.Info) {
+            InfoRow(S.get(R.string.author), UpdateChecker.AUTHOR)
+            InfoRow(S.get(R.string.version), if (version.isNotEmpty()) version else "—")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilledTonalButton(onClick = { onOpen(UpdateChecker.REPO_URL) }, modifier = Modifier.weight(1f)) {
                     Text("GitHub")
                 }
                 OutlinedButton(onClick = { onOpen(UpdateChecker.UPSTREAM_URL) }, modifier = Modifier.weight(1f)) {
-                    Text("Оригинал")
+                    Text(S.get(R.string.original))
                 }
             }
             Text(
-                "Основано на Flowseal/tg-ws-proxy (лицензия MIT).",
+                S.get(R.string.based_on),
                 style = MaterialTheme.typography.bodySmall,
                 color = cs.onSurfaceVariant,
             )

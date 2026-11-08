@@ -1,5 +1,7 @@
 package com.tgwsproxy.ui
 
+import com.tgwsproxy.R
+import com.tgwsproxy.S
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -60,6 +62,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -104,6 +107,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tgwsproxy.ProxyState
@@ -111,6 +116,7 @@ import com.tgwsproxy.ProxyStats
 import com.tgwsproxy.SpeedPoint
 import com.tgwsproxy.stats.ClientInfo
 import com.tgwsproxy.update.UpdateChecker
+import com.tgwsproxy.util.BatteryTip
 import com.tgwsproxy.update.UpdateState
 import kotlinx.coroutines.Dispatchers
 import com.tgwsproxy.stats.ClientRegistry
@@ -146,17 +152,21 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
     val notifyUpdates by UpdateChecker.notifyEnabled.collectAsStateWithLifecycle()
     val lastCheck by UpdateChecker.lastCheckMs.collectAsStateWithLifecycle()
     val appVersion = remember { UpdateChecker.currentVersion(ctx) }
+    val lang by S.language.collectAsStateWithLifecycle()
+    var batteryOk by remember { mutableStateOf(BatteryTip.isIgnoring(ctx)) }
+    var batteryDismissed by remember { mutableStateOf(BatteryTip.dismissed(ctx)) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { batteryOk = BatteryTip.isIgnoring(ctx) }
     val openUrl: (String) -> Unit = { url ->
         runCatching {
             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.onFailure {
-            scope.launch { snackbar.showSnackbar("Не удалось открыть ссылку") }
+            scope.launch { snackbar.showSnackbar(S.get(R.string.err_open_link)) }
         }
     }
 
     var tab by rememberSaveable { mutableIntStateOf(0) }
 
-    val validation = remember(draft) { draft.validate() }
+    val validation = remember(draft, S.revision) { draft.validate() }
     val errors = validation.errors
     val changed = runningCfg?.let { it.runtimeKey() != draft.runtimeKey() } ?: false
 
@@ -190,25 +200,25 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     selected = tab == 0,
                     onClick = { tab = 0 },
                     icon = { Icon(Icons.Rounded.PowerSettingsNew, contentDescription = null) },
-                    label = { Text("Запуск") },
+                    label = { Text(S.get(R.string.tab_start)) },
                 )
                 NavigationBarItem(
                     selected = tab == 1,
                     onClick = { tab = 1 },
                     icon = { Icon(Icons.Rounded.Settings, contentDescription = null) },
-                    label = { Text("Настройки") },
+                    label = { Text(S.get(R.string.tab_settings)) },
                 )
                 NavigationBarItem(
                     selected = tab == 2,
                     onClick = { tab = 2 },
                     icon = { Icon(Icons.Rounded.Terminal, contentDescription = null) },
-                    label = { Text("Журнал") },
+                    label = { Text(S.get(R.string.tab_log)) },
                 )
                 NavigationBarItem(
                     selected = tab == 3,
                     onClick = { tab = 3 },
                     icon = { Icon(Icons.Rounded.Info, contentDescription = null) },
-                    label = { Text("О приложении", fontSize = 11.sp, maxLines = 1) },
+                    label = { Text(S.get(R.string.tab_about), fontSize = 11.sp, maxLines = 1) },
                 )
             }
         },
@@ -235,14 +245,37 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         runCatching {
                             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)))
                         }.onFailure {
-                            scope.launch { snackbar.showSnackbar("Не удалось открыть Telegram") }
+                            scope.launch { snackbar.showSnackbar(S.get(R.string.err_open_telegram)) }
                         }
                     },
                     onCopy = { link ->
                         clipboard.setText(AnnotatedString(link))
-                        scope.launch { snackbar.showSnackbar("Ссылка скопирована") }
+                        scope.launch { snackbar.showSnackbar(S.get(R.string.link_copied)) }
                     },
                 )
+                if (!batteryOk && !batteryDismissed) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = cs.secondaryContainer,
+                            contentColor = cs.onSecondaryContainer,
+                        ),
+                        shape = RoundedCornerShape(20.dp),
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(S.get(R.string.battery_tip), style = MaterialTheme.typography.bodyMedium)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = { BatteryTip.request(ctx) }) { Text(S.get(R.string.battery_allow)) }
+                                TextButton(onClick = {
+                                    BatteryTip.dismiss(ctx)
+                                    batteryDismissed = true
+                                }) { Text(S.get(R.string.later)) }
+                            }
+                            TextButton(onClick = { BatteryTip.openAppSettings(ctx) }) {
+                                Text(S.get(R.string.battery_app_settings))
+                            }
+                        }
+                    }
+                }
                 if (updateState is UpdateState.Available) {
                     Card(
                         colors = CardDefaults.cardColors(
@@ -256,11 +289,11 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Доступна новая версия ${(updateState as UpdateState.Available).info.version}",
+                                S.get(R.string.banner_update, (updateState as UpdateState.Available).info.version),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            TextButton(onClick = { tab = 3 }) { Text("Подробнее") }
+                            TextButton(onClick = { tab = 3 }) { Text(S.get(R.string.details)) }
                         }
                     }
                 }
@@ -273,7 +306,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         link = runningStatus.link,
                         onCopy = { text ->
                             clipboard.setText(AnnotatedString(text))
-                            scope.launch { snackbar.showSnackbar("Ссылка скопирована") }
+                            scope.launch { snackbar.showSnackbar(S.get(R.string.link_copied)) }
                         },
                     )
                 }
@@ -296,7 +329,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         shape = RoundedCornerShape(20.dp),
                     ) {
                         Text(
-                            "Много подключений с неверным ключом (${stats.rejected}). Скорее всего, в одном из клиентов Telegram сохранён прокси со старым ключом. Удалите его в «Настройки → Данные и память → Прокси» и добавьте заново кнопкой «В Telegram».",
+                            S.get(R.string.rejected_hint, stats.rejected),
                             modifier = Modifier.padding(16.dp),
                             style = MaterialTheme.typography.bodyMedium,
                         )
@@ -315,16 +348,16 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Приложение недавно вылетело. Текст ошибки — на вкладке «Журнал».",
+                                S.get(R.string.crash_banner),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            TextButton(onClick = { tab = 2 }) { Text("Открыть") }
+                            TextButton(onClick = { tab = 2 }) { Text(S.get(R.string.open)) }
                         }
                     }
                 }
                 if (!errors.isEmpty() && status !is ProxyStatus.Running) {
-                    TextButton(onClick = { tab = 1 }) { Text("Перейти к настройкам") }
+                    TextButton(onClick = { tab = 1 }) { Text(S.get(R.string.go_settings)) }
                 }
             }
 
@@ -349,21 +382,21 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(
-                                "Настройки изменены. Нужен перезапуск прокси.",
+                                S.get(R.string.settings_changed),
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyMedium,
                             )
-                            TextButton(onClick = ::onStart, enabled = errors.isEmpty()) { Text("Применить") }
+                            TextButton(onClick = ::onStart, enabled = errors.isEmpty()) { Text(S.get(R.string.apply)) }
                         }
                     }
                 }
 
-                SectionCard("Подключение", Icons.Rounded.Lan) {
+                SectionCard(S.get(R.string.sec_connection), Icons.Rounded.Lan) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         AppField(
                             value = draft.host,
                             onChange = { v -> vm.update { it.copy(host = v) } },
-                            label = "IP-адрес",
+                            label = S.get(R.string.ip_address),
                             modifier = Modifier.weight(1.6f),
                             error = errors[Field.HOST],
                             keyboardType = KeyboardType.Uri,
@@ -371,7 +404,7 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         AppField(
                             value = draft.port,
                             onChange = { v -> vm.update { it.copy(port = v.filter(Char::isDigit).take(5)) } },
-                            label = "Порт",
+                            label = S.get(R.string.port),
                             modifier = Modifier.weight(1f),
                             error = errors[Field.PORT]?.let { "1024–65535" },
                             keyboardType = KeyboardType.Number,
@@ -380,17 +413,17 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     AppField(
                         value = draft.secret,
                         onChange = { v -> vm.update { it.copy(secret = v.trim()) } },
-                        label = "Ключ (secret)",
+                        label = S.get(R.string.secret_label),
                         error = errors[Field.SECRET],
-                        supporting = if (draft.fakeTlsDomain.isBlank()) "32 hex-символа. В ссылку добавляется префикс dd" else "32 hex-символа. Со ссылкой уйдёт ee-ключ с доменом Fake TLS",
+                        supporting = if (draft.fakeTlsDomain.isBlank()) S.get(R.string.secret_hint_dd) else S.get(R.string.secret_hint_ee),
                         trailing = {
                             Row {
                                 IconButton(onClick = {
                                     clipboard.setText(AnnotatedString(draft.secret))
-                                    scope.launch { snackbar.showSnackbar("Ключ скопирован") }
-                                }) { Icon(Icons.Rounded.ContentCopy, contentDescription = "Копировать ключ") }
+                                    scope.launch { snackbar.showSnackbar(S.get(R.string.key_copied)) }
+                                }) { Icon(Icons.Rounded.ContentCopy, contentDescription = S.get(R.string.copy_key)) }
                                 IconButton(onClick = vm::regenerateSecret) {
-                                    Icon(Icons.Rounded.Refresh, contentDescription = "Сгенерировать новый")
+                                    Icon(Icons.Rounded.Refresh, contentDescription = S.get(R.string.generate_new))
                                 }
                             }
                         },
@@ -398,20 +431,20 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     AppField(
                         value = draft.fakeTlsDomain,
                         onChange = { v -> vm.update { it.copy(fakeTlsDomain = v) } },
-                        label = "Домен Fake TLS (необязательно)",
+                        label = S.get(R.string.fake_tls_label),
                         error = errors[Field.FAKE_TLS],
-                        supporting = "Маскировка под HTTPS-сайт, например www.google.com. Включает ee-ключ в ссылке. Пусто — выключено",
+                        supporting = S.get(R.string.fake_tls_hint),
                         keyboardType = KeyboardType.Uri,
                     )
                     SwitchRow(
-                        title = "Доступ из локальной сети",
-                        subtitle = "Другие устройства в вашей Wi-Fi сети смогут подключиться к прокси",
+                        title = S.get(R.string.lan_access),
+                        subtitle = S.get(R.string.lan_access_sub),
                         checked = draft.host.trim() == "0.0.0.0",
                         onChecked = { v -> vm.update { it.copy(host = if (v) "0.0.0.0" else "127.0.0.1") } },
                     )
                     if (draft.host.trim() == "0.0.0.0") {
                         Text(
-                            "Любой, у кого есть ключ, сможет пользоваться прокси. Не передавайте ключ посторонним.",
+                            S.get(R.string.lan_warning),
                             style = MaterialTheme.typography.bodySmall,
                             color = cs.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp),
@@ -419,9 +452,9 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         AppField(
                             value = draft.allowedIps,
                             onChange = { v -> vm.update { it.copy(allowedIps = v) } },
-                            label = "Разрешённые адреса",
+                            label = S.get(R.string.allowed_label),
                             error = errors[Field.ALLOWED],
-                            supporting = "По одному в строке: 192.168.1.15 или подсеть 192.168.1.0/24. Пусто — разрешены все",
+                            supporting = S.get(R.string.allowed_hint),
                             singleLine = false,
                             minLines = 2,
                             keyboardType = KeyboardType.Ascii,
@@ -429,13 +462,13 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                     }
                 }
 
-                SectionCard("Маршрутизация", Icons.Rounded.Tune) {
+                SectionCard(S.get(R.string.sec_routing), Icons.Rounded.Tune) {
                     AppField(
                         value = draft.dcIp,
                         onChange = { v -> vm.update { it.copy(dcIp = v) } },
                         label = "DC → IP",
                         error = errors[Field.DC_IP],
-                        supporting = "По одной паре DC:IP в строке. Не грузятся фото и видео — оставьте только 4:149.154.167.220 или очистите поле",
+                        supporting = S.get(R.string.dc_hint),
                         singleLine = false,
                         minLines = 3,
                         keyboardType = KeyboardType.Ascii,
@@ -444,8 +477,8 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
 
                 SectionCard("Cloudflare", Icons.Rounded.Cloud) {
                     SwitchRow(
-                        title = "CF-прокси",
-                        subtitle = "Резервный маршрут через Cloudflare, если прямой WebSocket недоступен",
+                        title = S.get(R.string.cf_proxy),
+                        subtitle = S.get(R.string.cf_proxy_sub),
                         checked = draft.cfProxy,
                         onChecked = { v -> vm.update { it.copy(cfProxy = v) } },
                     )
@@ -453,23 +486,23 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         AppField(
                             value = draft.cfProxyDomain,
                             onChange = { v -> vm.update { it.copy(cfProxyDomain = v) } },
-                            label = "Домен CF-прокси",
+                            label = S.get(R.string.cf_domain_label),
                             error = errors[Field.CF_DOMAIN],
-                            supporting = "Свой домен в Cloudflare. Пусто — домены по умолчанию",
+                            supporting = S.get(R.string.cf_domain_hint),
                             keyboardType = KeyboardType.Uri,
                         )
                     }
                     AnimatedVisibility(draft.cfProxy) {
                         SwitchRow(
-                            title = "HTTP/2 для медиа через CF",
-                            subtitle = "Экспериментально: фото и видео по HTTP/2. При сбое автоматически используется обычный путь",
+                            title = S.get(R.string.h2_media),
+                            subtitle = S.get(R.string.h2_media_sub),
                             checked = draft.cfH2,
                             onChecked = { v -> vm.update { it.copy(cfH2 = v) } },
                         )
                     }
                     SwitchRow(
                         title = "Cloudflare Worker",
-                        subtitle = "Бесплатная альтернатива без своего домена",
+                        subtitle = S.get(R.string.worker_sub),
                         checked = draft.cfWorker,
                         onChecked = { v -> vm.update { it.copy(cfWorker = v) } },
                     )
@@ -477,42 +510,58 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                         AppField(
                             value = draft.cfWorkerDomain,
                             onChange = { v -> vm.update { it.copy(cfWorkerDomain = v) } },
-                            label = "Домен Worker’а",
+                            label = S.get(R.string.worker_domain_label),
                             error = errors[Field.WORKER_DOMAIN],
-                            supporting = "Например name.user.workers.dev. Несколько — через запятую",
+                            supporting = S.get(R.string.worker_domain_hint),
                             keyboardType = KeyboardType.Uri,
                         )
                     }
                 }
 
-                SectionCard("Система", Icons.Rounded.Settings) {
+                SectionCard(S.get(R.string.sec_system), Icons.Rounded.Settings) {
                     SwitchRow(
-                        title = "Автозапуск",
-                        subtitle = "Запускать прокси при включении телефона и при открытии приложения",
+                        title = S.get(R.string.autostart),
+                        subtitle = S.get(R.string.autostart_sub),
                         checked = draft.autostart,
                         onChecked = { v -> vm.update { it.copy(autostart = v) } },
                     )
                     SwitchRow(
-                        title = "Перезапуск при смене сети",
-                        subtitle = "Переподключать прокси при переходе Wi-Fi ↔ мобильная сеть",
+                        title = S.get(R.string.restart_net),
+                        subtitle = S.get(R.string.restart_net_sub),
                         checked = draft.restartOnNetwork,
                         onChecked = { v -> vm.update { it.copy(restartOnNetwork = v) } },
                     )
                     if (Build.VERSION.SDK_INT >= 31) {
                         SwitchRow(
-                            title = "Динамические цвета",
-                            subtitle = "Брать цвета из обоев (Material You) вместо голубой темы",
+                            title = S.get(R.string.dynamic_colors),
+                            subtitle = S.get(R.string.dynamic_colors_sub),
                             checked = draft.dynamicColors,
                             onChecked = { v -> vm.update { it.copy(dynamicColors = v) } },
                         )
                     }
+                    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(S.get(R.string.language), style = MaterialTheme.typography.bodyLarge)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(
+                                "system" to R.string.lang_system,
+                                "ru" to R.string.lang_ru,
+                                "en" to R.string.lang_en,
+                            ).forEach { (code, label) ->
+                                FilterChip(
+                                    selected = lang == code,
+                                    onClick = { S.setLanguage(code) },
+                                    label = { Text(S.get(label)) },
+                                )
+                            }
+                        }
+                    }
                     if (Build.VERSION.SDK_INT >= 33) {
                         TextButton(onClick = {
                             requestAddTile(ctx) { msg -> scope.launch { snackbar.showSnackbar(msg) } }
-                        }) { Text("Добавить плитку в шторку") }
+                        }) { Text(S.get(R.string.add_tile)) }
                     } else {
                         Text(
-                            "Плитка: потяните шторку вниз → значок карандаша → добавьте «TG WS Proxy».",
+                            S.get(R.string.tile_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = cs.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 16.dp),
@@ -528,13 +577,13 @@ fun MainScreen(vm: MainViewModel = viewModel()) {
                 crash = crash,
                 onCopyCrash = {
                     clipboard.setText(AnnotatedString(crash.orEmpty()))
-                    scope.launch { snackbar.showSnackbar("Отчёт о сбое скопирован") }
+                    scope.launch { snackbar.showSnackbar(S.get(R.string.crash_copied)) }
                 },
                 onDismissCrash = vm::dismissCrash,
                 onClear = ProxyState::clearLogs,
                 onCopy = {
                     clipboard.setText(AnnotatedString(logs.joinToString("\n")))
-                    scope.launch { snackbar.showSnackbar("Журнал скопирован") }
+                    scope.launch { snackbar.showSnackbar(S.get(R.string.log_copied)) }
                 },
                 modifier = Modifier.padding(padding),
             )
@@ -575,16 +624,16 @@ private fun StatusCard(
     val onContainer = if (running) cs.onPrimaryContainer else cs.onSurface
 
     val title = when (status) {
-        is ProxyStatus.Running -> "Прокси работает"
-        ProxyStatus.Starting -> "Запуск…"
-        is ProxyStatus.Error -> "Ошибка"
-        ProxyStatus.Stopped -> "Остановлен"
+        is ProxyStatus.Running -> S.get(R.string.proxy_running)
+        ProxyStatus.Starting -> S.get(R.string.starting)
+        is ProxyStatus.Error -> S.get(R.string.error)
+        ProxyStatus.Stopped -> S.get(R.string.stopped)
     }
     val subtitle = when (status) {
         is ProxyStatus.Running -> "${status.host}:${status.port}"
-        ProxyStatus.Starting -> "Подождите секунду"
+        ProxyStatus.Starting -> S.get(R.string.please_wait)
         is ProxyStatus.Error -> status.message
-        ProxyStatus.Stopped -> "Нажмите «Запустить»"
+        ProxyStatus.Stopped -> S.get(R.string.press_start)
     }
 
     Card(
@@ -626,12 +675,12 @@ private fun StatusCard(
             ) {
                 Icon(if (running || starting) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text(if (running || starting) "Остановить" else "Запустить", style = MaterialTheme.typography.titleMedium)
+                Text(if (running || starting) S.get(R.string.stop) else S.get(R.string.start), style = MaterialTheme.typography.titleMedium)
             }
 
             if (!canStart && !running && !starting) {
                 Text(
-                    "Исправьте ошибки в настройках ниже",
+                    S.get(R.string.fix_errors),
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.error,
                 )
@@ -641,7 +690,7 @@ private fun StatusCard(
                 OutlinedButton(onClick = onRestart, enabled = canStart, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Rounded.Refresh, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Применить настройки (перезапуск)")
+                    Text(S.get(R.string.apply_restart))
                 }
             }
 
@@ -661,17 +710,17 @@ private fun StatusCard(
                     FilledTonalButton(onClick = { onOpen(status.link) }, modifier = Modifier.weight(1f)) {
                         Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("В Telegram")
+                        Text(S.get(R.string.add_to_telegram))
                     }
                     OutlinedButton(onClick = { onCopy(status.link) }, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Копировать")
+                        Text(S.get(R.string.copy))
                     }
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        "Активных: ${stats.active} · Всего: ${stats.total} · Ошибок: ${stats.failed} · Отклонено: ${stats.rejected}",
+                        S.get(R.string.stats_line, stats.active, stats.total, stats.failed, stats.rejected),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
@@ -683,7 +732,7 @@ private fun StatusCard(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (network != null) {
-                        Text("Сеть: $network", style = MaterialTheme.typography.bodySmall)
+                        Text(S.get(R.string.network_fmt, network), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
@@ -785,28 +834,28 @@ private fun LogScreen(
                 shape = RoundedCornerShape(20.dp),
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Последний сбой приложения", style = MaterialTheme.typography.titleSmall)
+                    Text(S.get(R.string.last_crash), style = MaterialTheme.typography.titleSmall)
                     Text(
                         crash.lines().take(10).joinToString("\n"),
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                     )
                     Row {
-                        TextButton(onClick = onCopyCrash) { Text("Копировать всё") }
-                        TextButton(onClick = onDismissCrash) { Text("Скрыть") }
+                        TextButton(onClick = onCopyCrash) { Text(S.get(R.string.copy_all)) }
+                        TextButton(onClick = onDismissCrash) { Text(S.get(R.string.hide)) }
                     }
                 }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Записей: ${logs.size}",
+                S.get(R.string.entries, logs.size),
                 style = MaterialTheme.typography.bodyMedium,
                 color = cs.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onCopy, enabled = logs.isNotEmpty()) { Text("Копировать") }
-            TextButton(onClick = onClear, enabled = logs.isNotEmpty()) { Text("Очистить") }
+            TextButton(onClick = onCopy, enabled = logs.isNotEmpty()) { Text(S.get(R.string.copy)) }
+            TextButton(onClick = onClear, enabled = logs.isNotEmpty()) { Text(S.get(R.string.clear)) }
         }
         Surface(
             shape = RoundedCornerShape(24.dp),
@@ -817,7 +866,7 @@ private fun LogScreen(
         ) {
             if (logs.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Пока пусто", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+                    Text(S.get(R.string.empty_log), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(
@@ -853,13 +902,13 @@ private fun ClientsCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Rounded.Devices, contentDescription = null, tint = cs.primary)
                 Text(
-                    "Подключённые устройства ($online)",
+                    S.get(R.string.clients_title, online),
                     style = MaterialTheme.typography.titleMedium,
                     color = cs.primary,
                 )
             }
             if (clients.isEmpty()) {
-                Text("Пока никто не подключался.", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
+                Text(S.get(R.string.no_clients), style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
             }
             clients.forEach { c ->
                 Surface(shape = RoundedCornerShape(16.dp), color = cs.surfaceContainerHigh) {
@@ -873,19 +922,19 @@ private fun ClientsCard(
                             )
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                if (c.isLocal) "${c.ip} · это устройство" else c.ip,
+                                if (c.isLocal) S.get(R.string.this_device, c.ip) else c.ip,
                                 style = MaterialTheme.typography.titleSmall,
                             )
                         }
                         Text(
-                            "Соединений: ${c.active} · всего: ${c.total} · ↓ ${Fmt.bytes(c.down)} ↑ ${Fmt.bytes(c.up)}",
+                            S.get(R.string.client_stats, c.active, c.total, Fmt.bytes(c.down), Fmt.bytes(c.up)),
                             style = MaterialTheme.typography.bodySmall,
                             color = cs.onSurfaceVariant,
                         )
                         if (!c.isLocal) {
                             Row {
-                                TextButton(onClick = { onDisconnect(c.ip) }, enabled = c.active > 0) { Text("Отключить") }
-                                TextButton(onClick = { onBlock(c.ip) }) { Text("Запретить") }
+                                TextButton(onClick = { onDisconnect(c.ip) }, enabled = c.active > 0) { Text(S.get(R.string.disconnect)) }
+                                TextButton(onClick = { onBlock(c.ip) }) { Text(S.get(R.string.block)) }
                             }
                         }
                     }
@@ -894,12 +943,12 @@ private fun ClientsCard(
             if (blocked > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Запрещённых адресов: $blocked",
+                        S.get(R.string.blocked_count, blocked),
                         style = MaterialTheme.typography.bodySmall,
                         color = cs.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = onUnblockAll) { Text("Сбросить") }
+                    TextButton(onClick = onUnblockAll) { Text(S.get(R.string.reset)) }
                 }
             }
         }
@@ -917,17 +966,17 @@ private fun ShareCard(lanIp: String?, port: Int, link: String, onCopy: (String) 
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Rounded.Wifi, contentDescription = null, tint = cs.primary)
-                Text("Другое устройство в Wi-Fi", style = MaterialTheme.typography.titleMedium, color = cs.primary)
+                Text(S.get(R.string.share_title), style = MaterialTheme.typography.titleMedium, color = cs.primary)
             }
             if (lanLink == null) {
                 Text(
-                    "Не удалось определить адрес телефона в локальной сети. Подключитесь к Wi-Fi или включите точку доступа.",
+                    S.get(R.string.share_no_ip),
                     style = MaterialTheme.typography.bodyMedium,
                     color = cs.onSurfaceVariant,
                 )
             } else {
                 Text(
-                    "Наведите камеру на QR-код на втором устройстве, где установлен Telegram, или скопируйте ссылку. Адрес: $lanIp:$port",
+                    S.get(R.string.share_hint, lanIp, port),
                     style = MaterialTheme.typography.bodyMedium,
                     color = cs.onSurfaceVariant,
                 )
@@ -937,7 +986,7 @@ private fun ShareCard(lanIp: String?, port: Int, link: String, onCopy: (String) 
                 OutlinedButton(onClick = { onCopy(lanLink) }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Rounded.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Копировать ссылку для другого устройства")
+                    Text(S.get(R.string.copy_share_link))
                 }
             }
         }
@@ -960,10 +1009,10 @@ private fun DailyStatsCard(days: List<DayStats>) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Rounded.BarChart, contentDescription = null, tint = cs.primary)
-                Text("Маршруты за сегодня", style = MaterialTheme.typography.titleMedium, color = cs.primary)
+                Text(S.get(R.string.routes_today), style = MaterialTheme.typography.titleMedium, color = cs.primary)
             }
             Text(
-                "Соединений: ${today.total} · Ошибок: ${today.failed} · ↓ ${Fmt.bytes(today.down)} ↑ ${Fmt.bytes(today.up)}",
+                S.get(R.string.today_stats, today.total, today.failed, Fmt.bytes(today.down), Fmt.bytes(today.up)),
                 style = MaterialTheme.typography.bodyMedium,
             )
             Row(
@@ -999,7 +1048,7 @@ private fun DailyStatsCard(days: List<DayStats>) {
                 }
             }
             if (history.isNotEmpty()) {
-                Text("Предыдущие дни", style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
+                Text(S.get(R.string.previous_days), style = MaterialTheme.typography.labelLarge, color = cs.onSurfaceVariant)
                 history.forEach { d ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -1037,15 +1086,15 @@ private fun SpeedCard(points: List<SpeedPoint>) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Rounded.Speed, contentDescription = null, tint = cs.primary)
-                Text("Скорость", style = MaterialTheme.typography.titleMedium, color = cs.primary)
+                Text(S.get(R.string.speed), style = MaterialTheme.typography.titleMedium, color = cs.primary)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 Column {
-                    Text("↓ загрузка", style = MaterialTheme.typography.labelMedium, color = downColor)
+                    Text(S.get(R.string.download), style = MaterialTheme.typography.labelMedium, color = downColor)
                     Text(formatSpeed(down), style = MaterialTheme.typography.titleLarge)
                 }
                 Column {
-                    Text("↑ отдача", style = MaterialTheme.typography.labelMedium, color = upColor)
+                    Text(S.get(R.string.upload), style = MaterialTheme.typography.labelMedium, color = upColor)
                     Text(formatSpeed(up), style = MaterialTheme.typography.titleLarge)
                 }
             }
@@ -1092,13 +1141,13 @@ private fun SpeedCard(points: List<SpeedPoint>) {
             }
             Row {
                 Text(
-                    "последние ${ProxyState.SPEED_POINTS} с",
+                    S.get(R.string.last_seconds, ProxyState.SPEED_POINTS),
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    "пик ${formatSpeed(peak)}",
+                    S.get(R.string.peak, formatSpeed(peak)),
                     style = MaterialTheme.typography.bodySmall,
                     color = cs.onSurfaceVariant,
                 )
@@ -1107,11 +1156,6 @@ private fun SpeedCard(points: List<SpeedPoint>) {
     }
 }
 
-private fun formatSpeed(bytesPerSec: Long): String = formatBytes(bytesPerSec) + "/с"
+private fun formatSpeed(bytesPerSec: Long): String = Fmt.speed(bytesPerSec)
 
-private fun formatBytes(b: Long): String = when {
-    b < 1024 -> "$b Б"
-    b < 1024 * 1024 -> "%.1f КБ".format(b / 1024.0)
-    b < 1024L * 1024 * 1024 -> "%.1f МБ".format(b / 1048576.0)
-    else -> "%.2f ГБ".format(b / 1073741824.0)
-}
+private fun formatBytes(b: Long): String = Fmt.bytes(b)

@@ -1,5 +1,7 @@
 package com.tgwsproxy.ui
 
+import com.tgwsproxy.R
+import com.tgwsproxy.S
 import android.app.Application
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -44,8 +46,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             ContextCompat.startForegroundService(app, ProxyService.startIntent(app))
         } catch (e: Throwable) {
             val msg = e.message ?: e.javaClass.simpleName
-            ProxyState.log("Не удалось запустить сервис: $msg")
-            ProxyState.status.value = ProxyStatus.Error("Не удалось запустить сервис: $msg")
+            ProxyState.log(S.get(R.string.err_service_start, msg))
+            ProxyState.status.value = ProxyStatus.Error(S.get(R.string.err_service_start, msg))
         }
     }
 
@@ -54,7 +56,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         try {
             app.startService(ProxyService.stopIntent(app))
         } catch (e: Throwable) {
-            ProxyState.log("Не удалось остановить сервис: ${e.message ?: e.javaClass.simpleName}")
+            ProxyState.log(S.get(R.string.err_service_stop, e.message ?: e.javaClass.simpleName))
             ProxyState.status.value = ProxyStatus.Stopped
         }
     }

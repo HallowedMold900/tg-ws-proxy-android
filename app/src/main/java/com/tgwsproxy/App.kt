@@ -8,6 +8,7 @@ import java.util.Date
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        S.init(this)
         com.tgwsproxy.stats.DailyStats.init(this)
         com.tgwsproxy.stats.ClientRegistry.init(this)
         com.tgwsproxy.update.UpdateChecker.init(this)
@@ -19,7 +20,7 @@ class App : Application() {
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {
-                file.writeText("${Date()}  поток: ${thread.name}\n" + Log.getStackTraceString(error))
+                file.writeText("${Date()}  thread: ${thread.name}\n" + Log.getStackTraceString(error))
             } catch (_: Throwable) {}
             previous?.uncaughtException(thread, error)
         }

@@ -1,5 +1,6 @@
 package com.tgwsproxy.service
 
+import com.tgwsproxy.S
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -66,10 +67,10 @@ class ProxyWidget : AppWidgetProvider() {
             val sub: String
             val on: Boolean
             when (status) {
-                is ProxyStatus.Running -> { title = "Прокси работает"; sub = "${status.host}:${status.port} · нажмите, чтобы выключить"; on = true }
-                ProxyStatus.Starting -> { title = "Запуск…"; sub = "Подождите секунду"; on = true }
-                is ProxyStatus.Error -> { title = "Ошибка"; sub = status.message; on = false }
-                ProxyStatus.Stopped -> { title = "Прокси выключен"; sub = "Нажмите, чтобы запустить"; on = false }
+                is ProxyStatus.Running -> { title = S.get(R.string.proxy_running); sub = S.get(R.string.widget_running_sub, status.host, status.port); on = true }
+                ProxyStatus.Starting -> { title = S.get(R.string.starting); sub = S.get(R.string.please_wait); on = true }
+                is ProxyStatus.Error -> { title = S.get(R.string.error); sub = status.message; on = false }
+                ProxyStatus.Stopped -> { title = S.get(R.string.proxy_off); sub = S.get(R.string.widget_tap_start); on = false }
             }
             views.setTextViewText(R.id.widget_title, title)
             views.setTextViewText(R.id.widget_sub, sub)

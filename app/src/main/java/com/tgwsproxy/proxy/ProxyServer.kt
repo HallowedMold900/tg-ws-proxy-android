@@ -1,5 +1,7 @@
 package com.tgwsproxy.proxy
 
+import com.tgwsproxy.R
+import com.tgwsproxy.S
 import com.tgwsproxy.ProxyState
 import com.tgwsproxy.data.ProxySettings
 import com.tgwsproxy.stats.ClientRegistry
@@ -99,7 +101,7 @@ class ProxyServer(private val cfg: ProxySettings) {
         if (cfg.cfProxy && cfg.cfProxyDomains.isEmpty()) {
             executor.execute { refreshCfDomainsLoop() }
         }
-        ProxyState.log("Прокси слушает ${cfg.host}:${cfg.port}")
+        ProxyState.log(S.get(R.string.log_listen, cfg.host, cfg.port))
     }
 
     fun stop() {
@@ -109,7 +111,7 @@ class ProxyServer(private val cfg: ProxySettings) {
         tracked.clear()
         try { executor.shutdownNow() } catch (_: Exception) {}
         com.tgwsproxy.stats.DailyStats.flush()
-        ProxyState.log("Прокси остановлен")
+        ProxyState.log(S.get(R.string.log_stopped))
     }
 
     /** Как start_cfproxy_domain_refresh(): сначала встроенный список, затем обновление с GitHub раз в час. */
@@ -119,9 +121,9 @@ class ProxyServer(private val cfg: ProxySettings) {
                 val fetched = CfDomains.fetch()
                 if (fetched.isNotEmpty()) {
                     cfDomains = fetched
-                    ProxyState.log("CF: список доменов обновлён (${fetched.size})")
+                    ProxyState.log(S.get(R.string.log_cf_updated, fetched.size))
                 } else {
-                    ProxyState.log("CF: не удалось обновить список доменов, используется текущий (${cfDomains.size})")
+                    ProxyState.log(S.get(R.string.log_cf_update_failed, cfDomains.size))
                 }
                 Thread.sleep(3_600_000L)
             }
@@ -152,7 +154,7 @@ class ProxyServer(private val cfg: ProxySettings) {
         val addr = client.inetAddress
         val ip = addr?.hostAddress ?: "?"
         if (addr == null || !cfg.isAllowed(addr) || ClientRegistry.isBlocked(ip)) {
-            ProxyState.log("Отклонено подключение с $ip (нет в списке разрешённых или запрещён)")
+            ProxyState.log(S.get(R.string.log_rejected_ip, ip))
             closeQuietly(client)
             return
         }
@@ -195,7 +197,7 @@ class ProxyServer(private val cfg: ProxySettings) {
 
                 val verified = FakeTls.verifyClientHello(hello, cfg.secret)
                 if (verified == null) {
-                    ProxyState.log("Fake TLS: проверка не пройдена, передаю соединение на $fakeDomain")
+                    ProxyState.log(S.get(R.string.log_fake_tls_masking, fakeDomain))
                     maskTo(client, hello, fakeDomain)
                     return
                 }
@@ -215,11 +217,11 @@ class ProxyServer(private val cfg: ProxySettings) {
                 ProxyState.log(
                     when {
                         looksLikeTls && fakeDomain.isEmpty() ->
-                            "Клиент пришёл с ee-ключом (Fake TLS), а в приложении Fake TLS выключен. Удалите прокси в Telegram и добавьте заново кнопкой «В Telegram»"
+                            S.get(R.string.log_bad_key_ee)
                         fakeDomain.isNotEmpty() ->
-                            "Неверный ключ внутри Fake TLS. Удалите прокси в Telegram и добавьте заново кнопкой «В Telegram»"
+                            S.get(R.string.log_bad_key_tls)
                         else ->
-                            "Неверный ключ: в Telegram сохранён прокси со старым ключом. Удалите его и добавьте заново кнопкой «В Telegram»"
+                            S.get(R.string.log_bad_key)
                     },
                 )
                 ProxyState.updateStats { it.copy(rejected = it.rejected + 1) }
@@ -250,7 +252,7 @@ class ProxyServer(private val cfg: ProxySettings) {
 
             upstream = connectUpstream(dc, hs.isMedia, isTest, hs.proto, tag)
             if (upstream == null) {
-                ProxyState.log("$tag: нет доступного маршрута")
+                ProxyState.log(S.get(R.string.log_no_route, tag))
                 ProxyState.updateStats { it.copy(failed = it.failed + 1) }; com.tgwsproxy.stats.DailyStats.addFailed()
                 return
             }
@@ -338,7 +340,7 @@ class ProxyServer(private val cfg: ProxySettings) {
             }, "tgws-mask").apply { isDaemon = true; start() }
             try { copyStream(client.getInputStream(), up.getOutputStream()) } catch (_: Exception) {}
         } catch (e: Exception) {
-            ProxyState.log("Маскировка: не удалось подключиться к $domain — ${e.message ?: e.javaClass.simpleName}")
+            ProxyState.log(S.get(R.string.log_mask_failed, domain, e.message ?: e.javaClass.simpleName))
         } finally {
             tracked -= up
             closeQuietly(up)
@@ -364,7 +366,7 @@ class ProxyServer(private val cfg: ProxySettings) {
                 n++
             }
         }
-        ProxyState.log("Отключено соединений с $ip: $n")
+        ProxyState.log(S.get(R.string.log_disconnected, ip, n))
     }
 
     // ───────────────────────── маршрутизация ─────────────────────────
@@ -379,7 +381,7 @@ class ProxyServer(private val cfg: ProxySettings) {
         // 2. Cloudflare Worker (в оригинале пробуется раньше CF-прокси)
         if (cfg.cfWorker && fallbackDst != null) {
             for (worker in cfg.cfWorkerDomains.shuffled()) {
-                ProxyState.log("$tag: пробую Worker $worker")
+                ProxyState.log(S.get(R.string.log_try_worker, tag, worker))
                 when (val r = WsConnector.connect(worker, worker, "/apiws?dst=$fallbackDst&dc=$dc", FALLBACK_TIMEOUT_MS)) {
                     is WsResult.Ok -> {
                         ProxyState.log("$tag → Worker ($worker)")
@@ -451,7 +453,7 @@ class ProxyServer(private val cfg: ProxySettings) {
         wsFailures[key] = failures
         val delaySec = min(1L shl min(failures - 1, 12), 3600L)
         wsRetryAfter[key] = now + delaySec * 1000
-        ProxyState.log("$tag: прямой WS недоступен, повтор через $delaySec с")
+        ProxyState.log(S.get(R.string.log_ws_unavailable, tag, delaySec))
         return null
     }
 
@@ -465,7 +467,7 @@ class ProxyServer(private val cfg: ProxySettings) {
     private fun tcpFallback(dst: String, tag: String): Upstream? {
         val now = System.currentTimeMillis()
         if ((tcpRetryAfter[dst] ?: 0L) > now) {
-            ProxyState.log("$tag: TCP $dst пропущен (пауза после неудачи)")
+            ProxyState.log(S.get(R.string.log_tcp_skipped, tag, dst))
             return null
         }
         val s = Socket()
@@ -483,7 +485,7 @@ class ProxyServer(private val cfg: ProxySettings) {
             tcpFailures[dst] = failures
             val delaySec = min(30L * (1L shl min(failures - 1, 7)), 3600L)
             tcpRetryAfter[dst] = now + delaySec * 1000
-            ProxyState.log("$tag: TCP $dst — ${e.message ?: e.javaClass.simpleName}; повтор через $delaySec с")
+            ProxyState.log(S.get(R.string.log_tcp_failed, tag, dst, e.message ?: e.javaClass.simpleName, delaySec))
             null
         }
     }

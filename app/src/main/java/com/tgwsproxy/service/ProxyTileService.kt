@@ -1,5 +1,6 @@
 package com.tgwsproxy.service
 
+import com.tgwsproxy.S
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.drawable.Icon
@@ -53,10 +54,10 @@ class ProxyTileService : TileService() {
     private fun refresh(status: ProxyStatus) {
         val tile = qsTile ?: return
         val (state, subtitle) = when (status) {
-            is ProxyStatus.Running -> Tile.STATE_ACTIVE to "Работает"
-            ProxyStatus.Starting -> Tile.STATE_ACTIVE to "Запуск…"
-            is ProxyStatus.Error -> Tile.STATE_INACTIVE to "Ошибка"
-            ProxyStatus.Stopped -> Tile.STATE_INACTIVE to "Выключен"
+            is ProxyStatus.Running -> Tile.STATE_ACTIVE to S.get(R.string.running)
+            ProxyStatus.Starting -> Tile.STATE_ACTIVE to S.get(R.string.starting)
+            is ProxyStatus.Error -> Tile.STATE_INACTIVE to S.get(R.string.error)
+            ProxyStatus.Stopped -> Tile.STATE_INACTIVE to S.get(R.string.tile_off)
         }
         tile.state = state
         tile.label = "TG WS Proxy"

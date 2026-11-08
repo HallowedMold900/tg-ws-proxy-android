@@ -1,5 +1,6 @@
 package com.tgwsproxy.ui
 
+import com.tgwsproxy.S
 import android.app.StatusBarManager
 import android.content.ComponentName
 import android.content.Context
@@ -13,7 +14,7 @@ import com.tgwsproxy.service.ProxyTileService
 fun requestAddTile(ctx: Context, onResult: (String) -> Unit) {
     val manager = ctx.getSystemService(StatusBarManager::class.java)
     if (manager == null) {
-        onResult("Не удалось добавить плитку")
+        onResult(S.get(R.string.tile_add_failed))
         return
     }
     manager.requestAddTileService(
@@ -24,9 +25,9 @@ fun requestAddTile(ctx: Context, onResult: (String) -> Unit) {
     ) { code ->
         onResult(
             when (code) {
-                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> "Плитка добавлена"
-                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> "Плитка уже добавлена"
-                else -> "Плитку добавить не удалось"
+                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> S.get(R.string.tile_added)
+                StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> S.get(R.string.tile_already)
+                else -> S.get(R.string.tile_add_failed2)
             },
         )
     }

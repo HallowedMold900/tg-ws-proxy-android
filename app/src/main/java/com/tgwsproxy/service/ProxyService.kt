@@ -1,5 +1,6 @@
 package com.tgwsproxy.service
 
+import com.tgwsproxy.S
 import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
@@ -52,7 +53,7 @@ class ProxyService : Service() {
     override fun onCreate() {
         super.onCreate()
         getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Прокси", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CHANNEL_ID, S.get(R.string.channel_proxy), NotificationManager.IMPORTANCE_LOW),
         )
         registerNetworkCallback()
         // Скорость и число соединений — прямо в уведомлении
@@ -83,7 +84,7 @@ class ProxyService : Service() {
             return START_NOT_STICKY
         }
 
-        enterForeground("Запуск…")
+        enterForeground(S.get(R.string.starting))
         if (!startProxy()) {
             try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
             stopSelf()
@@ -120,12 +121,12 @@ class ProxyService : Service() {
                 ProxyState.runningConfig.value = draft
                 ProxyState.status.value = ProxyStatus.Running(settings.host, settings.port, settings.link)
                 ProxyState.lanIp.value = NetUtil.lanIpv4(this)
-                try { notify("Работает") } catch (_: Exception) {}
+                try { notify(S.get(R.string.running)) } catch (_: Exception) {}
             } catch (e: Throwable) {
                 val msg = e.message ?: e.javaClass.simpleName
-                ProxyState.log("Ошибка запуска: $msg")
+                ProxyState.log(S.get(R.string.log_start_error, msg))
                 if (generation.get() == gen) {
-                    ProxyState.status.value = ProxyStatus.Error("Не удалось запустить: $msg")
+                    ProxyState.status.value = ProxyStatus.Error(S.get(R.string.err_start_failed, msg))
                     ProxyState.runningConfig.value = null
                     try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Exception) {}
                     stopSelf()
@@ -155,9 +156,9 @@ class ProxyService : Service() {
                 ProxyState.network.value = when {
                     caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "VPN"
                     caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi"
-                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "мобильная сеть"
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> S.get(R.string.net_cellular)
                     caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet"
-                    else -> "сеть"
+                    else -> S.get(R.string.net_other)
                 }
             }
 
@@ -182,7 +183,7 @@ class ProxyService : Service() {
             val status = ProxyState.status.value
             if (status !is ProxyStatus.Running && status !is ProxyStatus.Starting) return
             if (!SettingsStore(this).load().restartOnNetwork) return
-            ProxyState.log("Сеть изменилась (${ProxyState.network.value ?: "нет сети"}) — перезапуск прокси")
+            ProxyState.log(S.get(R.string.log_network_changed, ProxyState.network.value ?: S.get(R.string.net_none)))
             startProxy()
         } catch (_: Throwable) {
         }
@@ -195,7 +196,7 @@ class ProxyService : Service() {
         val last = points.lastOrNull() ?: return
         val active = ProxyState.stats.value.active
         try {
-            notify("↓ ${Fmt.speed(last.down)} · ↑ ${Fmt.speed(last.up)} · подключений: $active")
+            notify(S.get(R.string.notif_speed, Fmt.speed(last.down), Fmt.speed(last.up), active))
         } catch (_: Exception) {
         }
     }
@@ -255,7 +256,7 @@ class ProxyService : Service() {
             .setContentText(text)
             .setSubText(runningLabel.ifEmpty { null })
             .setContentIntent(open)
-            .addAction(0, "Остановить", stop)
+            .addAction(0, S.get(R.string.stop), stop)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
